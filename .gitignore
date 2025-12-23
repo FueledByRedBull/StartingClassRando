@@ -1,0 +1,34 @@
+# Build artifacts
+build/
+dist/
+__pycache__/
+*.spec
+*.pyc
+
+# Executables and archives (go in GitHub Releases)
+*.exe
+*.7z
+*.zip
+
+# Third-party tools (download separately)
+WitchyBND*/
+
+# Generated output
+output/
+config.json
+
+# Data files
+graces.txt
+
+# Old/unused files
+Program.cs
+nul
+
+# Planning/dev files
+*.md
+!README.md
+
+# IDE/tool settings
+.claude/
+.vscode/
+.idea/
