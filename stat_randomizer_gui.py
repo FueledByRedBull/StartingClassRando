@@ -16,6 +16,7 @@ from tkinter import ttk, filedialog, messagebox, scrolledtext
 from pathlib import Path
 import threading
 import struct
+from typing import Optional, Callable
 
 # Try to import pymem, fall back to manual implementation
 PYMEM_AVAILABLE = False
@@ -98,14 +99,15 @@ class MemoryManager:
         self.last_error = f"Process not found. Tried: {', '.join(process_names)}"
         return False
 
-    def detach(self):
+    def detach(self) -> None:
         """Detach from the process."""
         if self.pm:
             try:
                 self.pm.close_process()
-            except:
-                pass
-        self.pm = None
+            except Exception:
+                pass  # Process may already be closed
+            finally:
+                self.pm = None
         self.module_base = 0
         self.module_size = 0
         self.process_id = 0
@@ -127,7 +129,7 @@ class MemoryManager:
             return 0
         try:
             return self.pm.read_longlong(address)
-        except:
+        except Exception:
             return 0
 
     def read_int32(self, address: int) -> int:
@@ -136,7 +138,7 @@ class MemoryManager:
             return 0
         try:
             return self.pm.read_int(address)
-        except:
+        except Exception:
             return 0
 
     def read_byte(self, address: int) -> int:
@@ -145,7 +147,7 @@ class MemoryManager:
             return 0
         try:
             return self.pm.read_uchar(address)
-        except:
+        except Exception:
             return 0
 
     def write_bytes(self, address: int, data: bytes) -> bool:
@@ -203,12 +205,12 @@ class MemoryManager:
             return self._manual_scan_aob(pattern, rel_offset, additional)
 
     def _manual_scan_aob(self, pattern: str, rel_offset: int, additional: int) -> int:
-        """Manual AOB scan fallback."""
+        """Manual AOB scan fallback with chunked reading for performance."""
         try:
             # Parse pattern
             parts = pattern.split(' ')
-            pattern_bytes = []
-            mask = []
+            pattern_bytes: list[int] = []
+            mask: list[bool] = []
 
             for part in parts:
                 if part == '??':
@@ -220,27 +222,42 @@ class MemoryManager:
 
             pattern_len = len(pattern_bytes)
 
-            # Read entire module memory
-            module_bytes = self.read_bytes(self.module_base, self.module_size)
+            # Chunked scanning - read 4MB at a time with overlap for pattern matching
+            CHUNK_SIZE = 4 * 1024 * 1024  # 4MB chunks
+            overlap = pattern_len - 1  # Overlap to catch patterns at chunk boundaries
 
-            if not module_bytes or len(module_bytes) < pattern_len:
-                self.last_error = f"Failed to read module memory (got {len(module_bytes) if module_bytes else 0} bytes)"
-                return 0
+            offset = 0
+            while offset < self.module_size:
+                # Calculate chunk size (may be smaller for last chunk)
+                remaining = self.module_size - offset
+                current_chunk_size = min(CHUNK_SIZE, remaining)
 
-            # Search for pattern
-            for i in range(len(module_bytes) - pattern_len):
-                found = True
-                for j in range(pattern_len):
-                    if mask[j] and module_bytes[i + j] != pattern_bytes[j]:
-                        found = False
-                        break
+                # Read chunk
+                chunk_bytes = self.read_bytes(self.module_base + offset, current_chunk_size)
 
-                if found:
-                    pattern_address = self.module_base + i
-                    relative_offset = struct.unpack('<i', module_bytes[i + rel_offset:i + rel_offset + 4])[0]
-                    absolute_address = pattern_address + additional + relative_offset
-                    print(f"[Manual] Pattern found at 0x{pattern_address:X}, resolved to 0x{absolute_address:X}")
-                    return absolute_address
+                if not chunk_bytes or len(chunk_bytes) < pattern_len:
+                    offset += current_chunk_size - overlap
+                    continue
+
+                # Search for pattern in this chunk
+                search_end = len(chunk_bytes) - pattern_len + 1
+                for i in range(search_end):
+                    found = True
+                    for j in range(pattern_len):
+                        if mask[j] and chunk_bytes[i + j] != pattern_bytes[j]:
+                            found = False
+                            break
+
+                    if found:
+                        pattern_address = self.module_base + offset + i
+                        relative_offset_bytes = chunk_bytes[i + rel_offset:i + rel_offset + 4]
+                        relative_offset_val = struct.unpack('<i', relative_offset_bytes)[0]
+                        absolute_address = pattern_address + additional + relative_offset_val
+                        print(f"[Manual/Chunked] Pattern found at 0x{pattern_address:X}, resolved to 0x{absolute_address:X}")
+                        return absolute_address
+
+                # Move to next chunk with overlap
+                offset += current_chunk_size - overlap
 
             self.last_error = "Pattern not found in module memory"
             return 0
@@ -796,9 +813,55 @@ GRACES_BY_REGION = {
 }
 
 # Flatten for compatibility
-KNOWN_GRACES = {}
+KNOWN_GRACES: dict[str, tuple[int, int]] = {}
 for region, graces in GRACES_BY_REGION.items():
     KNOWN_GRACES.update(graces)
+
+# Grace presets for quick selection
+GRACE_PRESETS: dict[str, list[str]] = {
+    "Bingo": [
+        "Scenic Isle",
+        "Ruined Labyrinth",
+        "Altus Highway Junction",
+        "Road of Iniquity",
+        "Inner Consecrated Snowfield",
+        "Snow Valley Ruins Overlook",
+        "Haligtree Roots",
+    ],
+    "Early Game": [
+        "The First Step",
+        "Church of Elleh",
+        "Gatefront",
+        "Stormhill Shack",
+        "Agheel Lake South",
+        "Agheel Lake North",
+        "Waypoint Ruins Cellar",
+    ],
+    "All Roundtables": [
+        "Table of Lost Grace",
+    ],
+    "Divine Towers": [
+        "Divine Tower of Limgrave",
+        "Divine Tower of Liurnia",
+        "Divine Tower of West Altus",
+        "Divine Tower of East Altus",
+        "Divine Tower of Caelid: Center",
+        "Isolated Divine Tower",
+    ],
+    "Legacy Dungeons": [
+        "Stormveil Main Gate",
+        "Godrick the Grafted",
+        "Raya Lucaria Grand Library",
+        "Volcano Manor",
+        "Rykard, Lord of Blasphemy",
+        "East Capital Rampart",
+        "Elden Throne",
+        "Haligtree Roots",
+        "Malenia, Goddess of Rot",
+        "Crumbling Beast Grave",
+        "Maliketh, the Black Blade",
+    ],
+}
 
 
 # ============================================================
@@ -834,21 +897,21 @@ def load_config() -> dict:
         try:
             with open(CONFIG_FILE, 'r') as f:
                 return json.load(f)
-        except:
-            pass
+        except (json.JSONDecodeError, OSError, ValueError):
+            pass  # Return empty config if file is corrupted
     return {}
 
 
-def save_config(config: dict):
+def save_config(config: dict) -> None:
     """Save configuration to file."""
     try:
         with open(CONFIG_FILE, 'w') as f:
             json.dump(config, f, indent=2)
-    except:
-        pass
+    except (OSError, TypeError) as e:
+        print(f"Warning: Could not save config: {e}")
 
 
-def find_witchybnd() -> str:
+def find_witchybnd() -> Optional[str]:
     """Find WitchyBND executable."""
     search_paths = [
         SCRIPT_DIR / "WitchyBND.exe",
@@ -862,13 +925,13 @@ def find_witchybnd() -> str:
     return shutil.which("WitchyBND")
 
 
-def randomize_stats(seed: int) -> dict:
+def randomize_stats(seed: int) -> dict[int, dict]:
     """Generate randomized stats for all classes using seed."""
     random.seed(seed)
     remaining_pool = TOTAL_STATS - (MIN_STAT * NUM_STATS)
-    all_stats = {}
+    all_stats: dict[int, dict] = {}
     for row_id, class_name in PLAYER_CLASSES.items():
-        stats = {k: MIN_STAT for k in ['vigor', 'mind', 'endurance', 'strength',
+        stats: dict[str, int] = {k: MIN_STAT for k in ['vigor', 'mind', 'endurance', 'strength',
                                         'dexterity', 'intelligence', 'faith', 'arcane']}
         for _ in range(remaining_pool):
             stats[random.choice(list(stats.keys()))] += 1
@@ -877,7 +940,7 @@ def randomize_stats(seed: int) -> dict:
     return all_stats
 
 
-def format_stats_text(all_stats: dict) -> str:
+def format_stats_text(all_stats: dict[int, dict]) -> str:
     """Format stats as text for display."""
     lines = ["-" * 65]
     for row_id in sorted(all_stats.keys()):
@@ -892,7 +955,7 @@ def format_stats_text(all_stats: dict) -> str:
     return "\n".join(lines)
 
 
-def export_csv(all_stats: dict, seed: int, output_dir: Path) -> Path:
+def export_csv(all_stats: dict[int, dict], seed: int, output_dir: Path) -> Path:
     """Export stats to CSV file."""
     output_dir.mkdir(parents=True, exist_ok=True)
     csv_path = output_dir / f"modified_{seed}.csv"
@@ -907,7 +970,7 @@ def export_csv(all_stats: dict, seed: int, output_dir: Path) -> Path:
     return csv_path
 
 
-def run_witchybnd(witchybnd_path: str, target_path: str) -> tuple:
+def run_witchybnd(witchybnd_path: str, target_path: str) -> tuple[bool, str]:
     """Run WitchyBND on a file/folder."""
     result = subprocess.run([witchybnd_path, "-s", target_path], capture_output=True, text=True)
     if result.stderr and result.stderr.strip():
@@ -915,7 +978,7 @@ def run_witchybnd(witchybnd_path: str, target_path: str) -> tuple:
     return True, ""
 
 
-def find_charainitparam(folder: Path) -> Path:
+def find_charainitparam(folder: Path) -> Optional[Path]:
     """Find CharaInitParam.param file in unpacked folder."""
     for root, dirs, files in os.walk(folder):
         for f in files:
@@ -924,7 +987,7 @@ def find_charainitparam(folder: Path) -> Path:
     return None
 
 
-def find_equip_param(folder: Path, param_name: str) -> Path:
+def find_equip_param(folder: Path, param_name: str) -> Optional[Path]:
     """Find a specific param file (e.g., EquipParamWeapon) in unpacked folder."""
     for root, dirs, files in os.walk(folder):
         for f in files:
@@ -933,7 +996,7 @@ def find_equip_param(folder: Path, param_name: str) -> Path:
     return None
 
 
-def load_weapon_names(witchybnd_path: str = None) -> dict:
+def load_weapon_names(witchybnd_path: Optional[str] = None) -> dict[int, str]:
     """Load weapon ID to name mapping from Paramdex Names file."""
     # Try multiple locations for the names file
     possible_paths = [
@@ -973,7 +1036,7 @@ def load_weapon_names(witchybnd_path: str = None) -> dict:
     return names
 
 
-def parse_weapon_requirements(unpacked_folder: Path, witchybnd_path: str) -> dict:
+def parse_weapon_requirements(unpacked_folder: Path, witchybnd_path: str) -> dict[int, dict[str, int]]:
     """Parse EquipParamWeapon.param.xml to get weapon stat requirements.
 
     Returns: {weapon_id: {'str': N, 'dex': N, 'int': N, 'fth': N, 'arc': N}, ...}
@@ -1036,7 +1099,7 @@ def parse_weapon_requirements(unpacked_folder: Path, witchybnd_path: str) -> dic
     return requirements
 
 
-def calculate_class_offset(weapon_reqs: dict, class_stats: dict) -> int:
+def calculate_class_offset(weapon_reqs: dict[str, int], class_stats: dict[str, int]) -> int:
     """Calculate stat points needed for a class to wield a weapon.
 
     Returns: Number of stat points needed (0 if class can already wield)
@@ -1056,7 +1119,7 @@ def calculate_class_offset(weapon_reqs: dict, class_stats: dict) -> int:
     return cost
 
 
-def parse_starting_equipment(param_xml_path: Path) -> dict:
+def parse_starting_equipment(param_xml_path: Path) -> dict[int, dict]:
     """Parse CharaInitParam XML to get starting equipment for each class.
 
     Returns: {class_id: {'name': str, 'weapons': [weapon_id, ...]}, ...}
@@ -1098,8 +1161,10 @@ def parse_starting_equipment(param_xml_path: Path) -> dict:
     return equipment
 
 
-def format_starting_equipment_offsets(starting_equip: dict, weapon_reqs: dict,
-                                       all_stats: dict, weapon_names: dict) -> str:
+def format_starting_equipment_offsets(starting_equip: dict[int, dict],
+                                       weapon_reqs: dict[int, dict[str, int]],
+                                       all_stats: dict[int, dict],
+                                       weapon_names: dict[int, str]) -> str:
     """Format starting equipment offsets for each class."""
     if not starting_equip or not weapon_reqs:
         return ""
@@ -1132,7 +1197,7 @@ def format_starting_equipment_offsets(starting_equip: dict, weapon_reqs: dict,
     return "\n".join(lines)
 
 
-def modify_param_xml(param_path: Path, all_stats: dict) -> bool:
+def modify_param_xml(param_path: Path, all_stats: dict[int, dict]) -> bool:
     """Modify the CharaInitParam XML with randomized stats."""
     with open(param_path, 'r', encoding='utf-8') as f:
         content = f.read()
@@ -1151,7 +1216,8 @@ def modify_param_xml(param_path: Path, all_stats: dict) -> bool:
     return modified_count > 0
 
 
-def process_regulation(regulation_path: Path, seed: int, witchybnd_path: str, log_callback=None) -> tuple:
+def process_regulation(regulation_path: Path, seed: int, witchybnd_path: str,
+                       log_callback: Optional[Callable[[str], None]] = None) -> tuple:
     """Process regulation.bin with randomized stats."""
     def log(msg):
         if log_callback:
@@ -1329,6 +1395,23 @@ class EldenRingModTool:
 
         self.efm_status_var = tk.StringVar(value="EventFlagMan: Not found")
         ttk.Label(conn_frame, textvariable=self.efm_status_var, foreground='gray').pack(anchor=tk.W)
+
+        # Presets frame
+        presets_frame = ttk.LabelFrame(parent, text="Presets", padding="5")
+        presets_frame.pack(fill=tk.X, pady=(0, 5))
+
+        ttk.Label(presets_frame, text="Quick Select:").pack(side=tk.LEFT, padx=(0, 5))
+        self.preset_var = tk.StringVar(value="")
+        preset_combo = ttk.Combobox(presets_frame, textvariable=self.preset_var,
+                                     values=list(GRACE_PRESETS.keys()), state="readonly", width=20)
+        preset_combo.pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(presets_frame, text="Apply Preset", command=self.apply_grace_preset).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(presets_frame, text="Unlock Preset", command=self.unlock_preset_graces).pack(side=tk.LEFT)
+
+        # Show preset contents
+        self.preset_info_var = tk.StringVar(value="")
+        ttk.Label(presets_frame, textvariable=self.preset_info_var, foreground='gray').pack(side=tk.RIGHT)
+        preset_combo.bind("<<ComboboxSelected>>", self.on_preset_selected)
 
         # Search frame
         search_frame = ttk.Frame(parent)
@@ -1628,15 +1711,15 @@ class EldenRingModTool:
         base_addr = self.memory.read_int64(ptr + 0x28)
         return base_addr
 
-    def select_all_graces(self):
+    def select_all_graces(self) -> None:
         for var in self.grace_checkboxes.values():
             var.set(True)
 
-    def deselect_all_graces(self):
+    def deselect_all_graces(self) -> None:
         for var in self.grace_checkboxes.values():
             var.set(False)
 
-    def unlock_selected_graces(self):
+    def unlock_selected_graces(self) -> None:
         if not self.memory.is_attached:
             messagebox.showerror("Error", "Not connected to game!\n\nClick 'Connect to Game' first.")
             return
@@ -1663,14 +1746,77 @@ class EldenRingModTool:
         else:
             messagebox.showinfo("Info", "No graces selected")
 
-    def unlock_all_graces(self):
+    def unlock_all_graces(self) -> None:
         self.select_all_graces()
         self.unlock_selected_graces()
 
+    def on_preset_selected(self, event=None) -> None:
+        """Handle preset selection - show info about the preset."""
+        preset_name = self.preset_var.get()
+        if preset_name and preset_name in GRACE_PRESETS:
+            grace_count = len(GRACE_PRESETS[preset_name])
+            self.preset_info_var.set(f"{grace_count} graces")
+        else:
+            self.preset_info_var.set("")
 
-def main():
+    def apply_grace_preset(self) -> None:
+        """Apply selected preset - check the corresponding grace checkboxes."""
+        preset_name = self.preset_var.get()
+        if not preset_name:
+            messagebox.showinfo("Info", "Please select a preset first.")
+            return
+
+        if preset_name not in GRACE_PRESETS:
+            messagebox.showerror("Error", f"Unknown preset: {preset_name}")
+            return
+
+        # First deselect all
+        self.deselect_all_graces()
+
+        # Then select only the preset graces
+        preset_graces = GRACE_PRESETS[preset_name]
+        selected_count = 0
+        not_found = []
+
+        for grace_name in preset_graces:
+            if grace_name in self.grace_checkboxes:
+                self.grace_checkboxes[grace_name].set(True)
+                selected_count += 1
+            else:
+                not_found.append(grace_name)
+
+        # Clear search to show all graces
+        self.grace_search_var.set("")
+
+        if not_found:
+            messagebox.showwarning("Warning",
+                f"Selected {selected_count} graces.\n\n"
+                f"Not found ({len(not_found)}):\n" + "\n".join(not_found))
+        else:
+            self.grace_status_var.set(f"Preset '{preset_name}' applied ({selected_count} graces)")
+
+    def unlock_preset_graces(self) -> None:
+        """Apply preset and immediately unlock those graces."""
+        preset_name = self.preset_var.get()
+        if not preset_name:
+            messagebox.showinfo("Info", "Please select a preset first.")
+            return
+
+        self.apply_grace_preset()
+        self.unlock_selected_graces()
+
+    def on_closing(self) -> None:
+        """Clean up resources before closing the application."""
+        if self.memory.is_attached:
+            self.memory.detach()
+        self.root.destroy()
+
+
+def main() -> None:
     root = tk.Tk()
     app = EldenRingModTool(root)
+    # Register cleanup handler for proper resource release
+    root.protocol("WM_DELETE_WINDOW", app.on_closing)
     root.mainloop()
 
 

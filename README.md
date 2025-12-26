@@ -6,6 +6,7 @@ A GUI tool that randomizes starting class stats in Elden Ring. Also includes a G
 
 - **Stat Randomizer**: Randomizes the starting stats for all 10 classes while keeping the total points balanced (88 points, Level 9)
 - **Grace Unlocker**: Unlock any Site of Grace in-game (requires game to be running)
+- **Grace Presets**: Quick-select preset groups of graces (Bingo, Early Game, Divine Towers, Legacy Dungeons)
 - **Seed-based**: Use seeds to share randomized stat distributions with friends
 - **Starting Equipment Check**: Shows if your randomized class can wield its starting weapons
 
@@ -33,8 +34,17 @@ A GUI tool that randomizes starting class stats in Elden Ring. Also includes a G
 ### Grace Unlocker Tab
 1. Launch Elden Ring and load a character
 2. Click "Connect to Game"
-3. Select the graces you want to unlock
-4. Click "Unlock Selected" or "Unlock ALL"
+3. Select graces to unlock:
+   - Use **Presets** dropdown for quick selection (Bingo, Early Game, etc.)
+   - Or manually select individual graces by region
+   - Use the **Search** box to filter graces
+4. Click "Unlock Selected", "Unlock Preset", or "Unlock ALL"
+
+### Available Presets
+- **Bingo**: Key graces for bingo runs (Scenic Isle, Ruined Labyrinth, Altus Highway Junction, etc.)
+- **Early Game**: Starting area graces (The First Step, Church of Elleh, Gatefront, etc.)
+- **Divine Towers**: All Divine Tower graces
+- **Legacy Dungeons**: Major dungeon and boss graces
 
 ## Notes
 
