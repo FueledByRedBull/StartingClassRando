@@ -870,8 +870,8 @@ GRACE_PRESETS: dict[str, list[str]] = {
 
 PLAYER_CLASSES = {
     3000: 'Vagabond', 3001: 'Warrior', 3002: 'Hero', 3003: 'Bandit',
-    3004: 'Astrologer', 3005: 'Prisoner', 3006: 'Confessor',
-    3007: 'Samurai', 3008: 'Prophet', 3009: 'Wretch',
+    3004: 'Astrologer', 3005: 'Prophet', 3006: 'Confessor',
+    3007: 'Samurai', 3008: 'Prisoner', 3009: 'Wretch',
 }
 
 STAT_FIELDS = {
