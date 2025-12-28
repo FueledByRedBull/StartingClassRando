@@ -1100,8 +1100,9 @@ def parse_weapon_requirements(unpacked_folder: Path, witchybnd_path: str) -> dic
 
 
 def calculate_class_offset(weapon_reqs: dict[str, int], class_stats: dict[str, int]) -> int:
-    """Calculate stat points needed for a class to wield a weapon.
+    """Calculate stat points needed for a class to wield a weapon (two-handed).
 
+    Assumes two-handed wielding, which gives 1.5x effective strength.
     Returns: Number of stat points needed (0 if class can already wield)
     """
     cost = 0
@@ -1115,6 +1116,9 @@ def calculate_class_offset(weapon_reqs: dict[str, int], class_stats: dict[str, i
     for req_stat, class_stat in stat_mapping.items():
         req_val = weapon_reqs.get(req_stat, 0)
         class_val = class_stats.get(class_stat, 0)
+        # Two-handed wielding gives 1.5x effective strength
+        if req_stat == 'str':
+            class_val = int(class_val * 1.5)
         cost += max(0, req_val - class_val)
     return cost
 
