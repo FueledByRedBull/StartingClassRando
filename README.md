@@ -21,7 +21,7 @@ A GUI tool that randomizes starting class stats in Elden Ring. Also includes a G
 1. Download [WitchyBND](https://github.com/ividyon/WitchyBND/releases) and extract it
 2. Download `EldenRingStatRandomizer.exe` from [Releases](https://github.com/FueledByRedBull/StartingClassRando/releases)
 3. **Place the .exe inside the WitchyBND folder** (same folder as `WitchyBND.exe`)
-4. Run `EldenRingStatRandomizer.exe`
+4. Run `EldenRingStatRandomizer.exe` after randomizer if using it with randomizer.
 
 ## Usage
 
