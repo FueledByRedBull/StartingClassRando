@@ -51,6 +51,7 @@ A GUI tool that randomizes starting class stats in Elden Ring. Also includes a G
 - A backup of your `regulation.bin` is created automatically
 - The Grace Unlocker requires the game to be running with a character loaded
 - You may need to run as Administrator for the Grace Unlocker to work
+- Use offline and at your own risk. The Grace Unlocker reads and writes live game process memory and may conflict with game updates, multiplayer rules, or anti-cheat expectations.
 
 ## Building from Source
 
